@@ -146,5 +146,3 @@ def swissPairings():
 # INSERT INTO players(player_name) VALUES ('Twilight Sparkle'), ('Fluttershy'), ('Applejack'), ('Pinkie Pie'), ('Rarity'), ('Rainbow Dash'), ('Princess Celestia'), ('Princess Luna');
 # INSERT INTO matches(match_id, id_player_a, id_player_b) VALUES (1,1,2),(2,3,4),(3,5,6),(4,7,8),(5,1,3),(6,2,4),(7,5,7),(8,6,8);
 # INSERT INTO matchResults(match_id, player_id, match_win) VALUES (1,1,1),(1,2,0),(2,3,1),(2,4,0),(3,5,1),(3,6,0),(4,7,1),(4,8,0),(5,1,1),(5,3,0),(6,2,1),(6,4,0),(7,5,1),(7,7,0),(8,6,1),(8,8,0);
-Status API Training Shop Blog About
-© 2016 GitHub, Inc. Terms Privacy Security Contact Help
