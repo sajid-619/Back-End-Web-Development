@@ -3,96 +3,221 @@
 # tournament.py -- implementation of a Swiss-system tournament
 #
 
+
 import psycopg2
+import bleach
 
 
 def connect():
-    """Connect to the tournament database, create the database and cursor objects"""
-    db = psycopg2.connect(dbname='tournament', user='vagrant')
-    cursor = db.cursor()
-    return db,cursor 
+    """Connect to the PostgreSQL database.  Returns a database connection."""
+    return psycopg2.connect("dbname=tournament")
+
+def get_cursor():
+    DB = connect()
+    #print "Opened database succesfully"
+    return DB, DB.cursor()
+
+def createTournaments(tournament, name):
+    """Adds a tournament to the tournament database."""
+
+    DB, c = get_cursor()
+    c_tournament = bleach.clean(tournament)
+    c_name = bleach.clean(name)
+    c.execute("INSERT INTO players(name) VALUES(%s) RETURNING player_id;",(c_name,))
+    player_id = c.fetchall()[0][0]
+
+    c.execute("INSERT INTO tournaments (tournament_name, player_id, bye_win) \
+                VALUES (%s, %s, %s)",(c_tournament, player_id, "false"))
+    
+    c.close()
+    DB.commit()
+    DB.close()
+
+def countTournaments():
+    
+    DB, c = get_cursor()
+    c.execute ("SELECT count(player_id) FROM tournaments;")
+    result = c.fetchall()[0][0]
+
+    c.close()
+    DB.close()
+    return int(result)
 
 
-def deleteMatches():
-    """Remove all the match records from the database."""
-    db, cursor = connect()
-    cursor.execute("DELETE FROM matches; DELETE FROM matchResults")
-    db.commit()
+def deleteMatches(tournament, choice):
+    """If choice = 0, remove all the match records from the specified tournament.
+    else remove all the match records from all tournament."""
+    DB, c = get_cursor()
 
-
-def deletePlayers():
-    """Remove all the player records from the database."""
-    db, cursor = connect()
-    cursor.execute("DELETE FROM players")
-    db.commit()
-
-
-def countPlayers():
-    """Returns the number of players currently registered."""
-    db, cursor = connect()
-    cursor.execute("SELECT COUNT(player_id) FROM players")
-    player_count = cursor.fetchall()
-
-    if player_count is not None:
-        player_count = player_count[0][0] 
+    c_tournament = bleach.clean(tournament)
+    if choice == 0:
+        c.execute("DELETE FROM tournament_games WHERE tournament_name = %s;", (c_tournament,))
     else:
-        player_count = 0      
-    return player_count
+        c.execute("DELETE FROM tournament_games;")
 
 
-def registerPlayer(name):
-    """Adds a player to the tournament database.
+    c.close()
+    DB.commit()
+    DB.close()
+
+
+def registerPlayer(tournament, player_id, name):
+    """Adds a player to the tournament database(In specific tournamemts).
   
     The database assigns a unique serial id number for the player.  (This
-    should be handled by your SQL database schema, not in your Python code.)
+    should be  handled by your SQL database schema, not in your Python code.)
   
+    Returns:
+      A dictionary with:
+        player_id: An integer storing the player's id. This can be used for
+                   registering the player in future tournaments.
+        tournament: An integer representing the tournament id the player is registered
+                    for. This can be used to register other players in the same
+                    tournament.
     Args:
-      name: the player's full name (need not be unique).
+        tournament: specifies the tournament.
+        player_id:  A player_id of 0 means the player is new and needs to be created.
+        name: the player's full name (need not be unique).
     """
-    db, cursor = connect()
-    cursor.execute("INSERT INTO players(player_name) VALUES(%s)",(name,))
-    db.commit()
+    DB, c = get_cursor()
+    
+    c_tournament = bleach.clean(tournament)
+    c_name = bleach.clean(name)
+  
+    if player_id == 0:
+        c.execute("INSERT INTO players(name) VALUES(%s) RETURNING player_id;",(c_name,))
+        player_id = c.fetchall()[0][0]
+
+    c.execute("INSERT INTO tournaments (tournament_name, player_id, bye_win) \
+                VALUES (%s, %s, %s)",(c_tournament, player_id, "false",))
+    
+    c.close()
+    DB.commit()
+    DB.close()
+    return {'player_id': player_id, 'tournament': tournament}
 
 
-def playerStandings():
-    """Returns a list of the players and their win records, sorted by wins.
+def countPlayers(tournament, choice):
+    """If choice = 0, returns all players in the specified tournament.
+        else returns all players in all tournaments."""
+
+    DB, c = get_cursor()
+    c_tournament = bleach.clean(tournament)
+
+    if choice == 0:
+        c.execute("SELECT count(player_id) FROM tournaments \
+                    WHERE tournament_name = %s",(c_tournament,))
+    else:
+        c.execute("SELECT count(*) FROM players")
+    
+    result = c.fetchall()[0][0]
+
+    c.close()
+    DB.close()
+    return int(result)
+
+
+def deletePlayers(tournament,choice):
+    """If choice = 0 remove all the player records from the specified tournament.
+        Else delete all players records in all tournaments"""
+
+    deleteMatches(tournament, choice)
+    DB, c = get_cursor()
+    
+    c_tournament = bleach.clean(tournament)
+    if choice == 0:
+        c.execute("DELETE FROM tournaments WHERE tournament_name = %s",(c_tournament,))
+    else:   
+        c.execute("DELETE FROM tournaments")
+        c.execute("DELETE FROM players")
+
+
+    DB.commit()
+    c.close()
+    DB.close()
+
+
+
+
+def playerStandings(tournament):
+    """Returns a list of the players and their win records for a specified tournament.
+    A draw counts as 1/2 a win.
     The first entry in the list should be the player in first place, or a player
     tied for first place if there is currently a tie.
     Returns:
       A list of tuples, each of which contains (id, name, wins, matches):
         id: the player's unique id (assigned by the database)
         name: the player's full name (as registered)
-        wins: the number of matches the player has won
+        wins: the number of matches the player has won.
         matches: the number of matches the player has played
     """
-    db, cursor = connect()
-    cursor.execute("SELECT * FROM playerStandings")
-    standings = cursor.fetchall()
-    return standings
+
+    DB, c = get_cursor()
+
+    c_tournament = bleach.clean(tournament)
+    c.execute("SELECT standings.player_id, players.name, standings.wins, standings.matches\
+                FROM standings, players \
+                WHERE standings.tournament_name = %s AND standings.player_id = players.player_id \
+                ORDER BY points DESC",(c_tournament,))
+    data = c.fetchall()
+    print data
+    print("\n")
+
+    c.close()
+    DB.close()
+    return data
 
 
-def reportMatch(winner, loser):
+
+
+#NOTES FROM BASIC MODULE USAGE ---> http://initd.org/psycopg/docs/usage.html#query-parameters
+
+#The correct way to pass variables in a SQL command is using the second argument of the execute() method:
+#SQL = "INSERT INTO authors (name) VALUES (%s);" # Note: no quotes
+#data = ("O'Reilly", )
+#cur.execute(SQL, data) # Note: no % operator
+
+def reportMatch(tournament, winner, loser, draw):
     """Records the outcome of a single match between two players.
     Args:
-      winner:  the id number of the player who won
-      loser:  the id number of the player who lost
+      winner:  id of the winner.
+      loser:  id of the loser.
+      draw: specifies if the match was a draw.(TRUE / FALSE)
+      tournament: specifies the game's tournament
+    Draw: winner and loser identify the players
     """
-    db, cursor = connect()
+    DB, c = get_cursor()
 
-    # Add a match to the table matches. 
-    cursor.execute("INSERT INTO matches(id_player_a, id_player_b) VALUES(%s, %s)", (winner, loser))
-    db.commit()
+    # Record the game
+    c_winner = bleach.clean(winner)
+    c_loser = bleach.clean(loser)
+    c_tournament = bleach.clean(tournament)
 
-    # Get the match id from matches
-    cursor.execute("SELECT match_id from matches")
-    current_match_id = cursor.fetchone()
+    
+    if draw:
+        query = "INSERT INTO tournament_games(tournament_name, player1_id, player2_id, draw)\
+                 VALUES (%s, %s, %s, %s)"
+        data = (c_tournament, c_winner, c_loser, "true")
+        print data
+        print ("\n")
+        c.execute(query, data)
+    else:
+        query = "INSERT INTO tournament_games(tournament_name, player1_id, player2_id, draw, winner_id)\
+                 VALUES (%s, %s, %s, %s, %s)"
+        data = (c_tournament, c_winner, c_loser, "false", c_winner)
+        print data
+        print ("\n")
+        c.execute(query, data)
 
-    # Add the results of the matches to the matchResults table.
-    cursor.execute("INSERT INTO matchResults(match_id, player_id, match_win) VALUES(%s, %s, %s);INSERT INTO matchResults(match_id, player_id, match_loss) VALUES(%s, %s, %s)", (current_match_id[0], winner, 1, current_match_id[0], loser, 1))
-    db.commit()
+
+    DB.commit()
+
+    c.close()
+    DB.close()
+
+
  
- 
-def swissPairings():
+def swissPairings(tournament):
     """Returns a list of pairs of players for the next round of a match.
   
     Assuming that there are an even number of players registered, each player
@@ -106,43 +231,39 @@ def swissPairings():
         name1: the first player's name
         id2: the second player's unique id
         name2: the second player's name
+    EXTRA : Supports odd number of players and nye win for a player. 
+            One bye win for a player per tournament
     """
+    DB, c = get_cursor()
+    
+    c_tournament = bleach.clean(tournament)
+    standings = playerStandings(c_tournament)
+    pairlist = []
 
-    db, cursor = connect()
+    if len(standings) % 2 == 1:
+        c.execute("SELECT players.player_id, players.name FROM tournaments, players \
+                    WHERE tournaments.tournament_name = %s AND NOT bye_win\
+                     AND tournamemts.player_id = players.player_id \
+                    ORDER BY RAND() LIMIT 1",(c_tournament,))
+        results = c.fetchall()
+        bye_id = results[0][0]
+        bye_name = results[0][1]
+        for player in standings:
+            pairlist.append((bye_id, bye_name, 0 , "BYE WIN"))
+            standings.remove(player)
+            break
 
-    cursor.execute("SELECT id, name, sum(wins) as num FROM playerStandings GROUP BY id, name ORDER BY num DESC")
-    player_win_count = cursor.fetchall()
+    pairlist.extend([(standings[i][0], standings[i][1], standings[i+1][0], standings[i+1][1]) for i in range(0,len(standings),2)])
+    
+    return pairlist
 
-    if len(player_win_count) > 0:
+    #DB, c = get_cursor()
+    #pairs = countPlayers()/2
+    #pairlist = []
+    #for x in range(0, pairs): 
+    #    c.execute("select id, name from standings limit 2 offset (%s);",(x*2,))
+    #    nextpair = c.fetchall()
+    #    pairlist.append(nextpair[0]+nextpair[1])
+    #DB.close()    
+    #return pairlist
 
-        player_list = []
-        pairing_list = []
-
-        # the SELECT statment above creates a list of tuples (player_win_count) with 3 elements - 
-        # id, name, and wins (a,b,c), we only need id and player_name (a,b), so a new list of 
-        # tuples is created ('player_list') by appending only id and name from 'player_win_count' 
-
-        for a,b,c in player_win_count: 
-            player_list.append((a,b))
-
-        # once we have a list of tuples containing id and name for each player, the players
-        # can get paired by looping through the range of the 'player_list' and appending the 
-        # results to a new list of tuples each containing 4 elements (id1,name1,id2,name2). The 
-        # players in 'player_list' were ordered by win numbers with the SELECT statment above, so 
-        # players with the same/similar win numbers are already next to each other in the list. 
-        # This allows the loop to pair the players by using ('player', 'player + 1') for each 
-        # iteration. 
-
-        for player in range(0, len(player_list) - 1,2): 
-            pairing_list.append((player_list[player][0],player_list[player][1], player_list[player + 1][0], player_list[player+1][1]))
-        return pairing_list
-
-
-
-# data used for testing: 
-
-# swissPairings()
-
-# INSERT INTO players(player_name) VALUES ('Twilight Sparkle'), ('Fluttershy'), ('Applejack'), ('Pinkie Pie'), ('Rarity'), ('Rainbow Dash'), ('Princess Celestia'), ('Princess Luna');
-# INSERT INTO matches(match_id, id_player_a, id_player_b) VALUES (1,1,2),(2,3,4),(3,5,6),(4,7,8),(5,1,3),(6,2,4),(7,5,7),(8,6,8);
-# INSERT INTO matchResults(match_id, player_id, match_win) VALUES (1,1,1),(1,2,0),(2,3,1),(2,4,0),(3,5,1),(3,6,0),(4,7,1),(4,8,0),(5,1,1),(5,3,0),(6,2,1),(6,4,0),(7,5,1),(7,7,0),(8,6,1),(8,8,0);
