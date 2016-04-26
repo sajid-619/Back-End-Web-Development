@@ -87,22 +87,12 @@ def playerStandings():
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     """
-    standings = []
-    try:
-        db = connect()
-        cursor = db.cursor()
-        sql_string = """select player.id, player.name, count(match.winner) 
-                        as win, count(match.loser + match.winner) as matches 
-                        from player left join match on player.id=match.winner 
-                        group by player.id;"""
-        cursor.execute(sql_string)
-        results = cursor.fetchall()
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
-
+    DB = connect()
+    c = DB.cursor()
+    c.execute("SELECT * FROM standing")
+    results = c.fetchall()
+    DB.close()
     return results
-
 
 
 def reportMatch(winner, loser):
