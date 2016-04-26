@@ -1,9 +1,22 @@
 import psycopg2
 
-def connect():
-    """Connect to the PostgreSQL database.  Returns a database connection."""
-    return psycopg2.connect("dbname=tournament")
+def connect(database_name="tournament"):
+    try:
+        db = psycopg2.connect("dbname={}".format(database_name))
+        cursor = db.cursor()
+        return db, cursor
+    except:
+        print("<error message>")
 
+def registerPlayer(name):
+    db, cursor = connect()
+
+    query = "INSERT INTO players (name) VALUES (%s);"
+    parameter = (name,)
+    cursor.execute(query, parameter)
+
+    db.commit()
+    db.close()
 
 def deleteMatches():
     """Remove all the match records from the database."""
