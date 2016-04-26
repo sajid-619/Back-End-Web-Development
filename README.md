@@ -1,5 +1,5 @@
-Swiss tournament management written in python
-About Swiss-system tournament
+SWISS TOURNAMENT MANAGEMENT WRITTEN IN PYTHON:
+About Swiss-system tournament:
 
 A Swiss-system tournament is a tournament which uses a non-elimination format. Competitors meet one-to-one in each round and are paired using a predetermined set of rules designed to ensure that as far as possible a competitor plays competitors with the same current score, subject to not playing the same opponent more than once. The winner is the competitor with the highest aggregate points earned in all rounds.
 
@@ -12,18 +12,18 @@ After registering matches, you can see the player standing, which will have play
 
 In the case of a player that is left with no opponent (i.e. odd number of players) he might receive a bye, which means he'll not play for the round, but he'll gain points as if he won. A player cannot receive more than one bye.
 
-Setting up
+SETTING UP
 
-Vagrant
+Vagrant:
 
 Vagrant use is optional, but it will make dependencies set up easier, as well as providing the same environment as where the tests were run. To create and boot the virtual machine:
 
-vagrant up
+Vagrant Up:
 Please note that the ubuntu version in the Vagrantfile used as a guide trusty32, and I changed it to vivid32. The reason is that I wanted to use a newer version of psycopg.
 
 To access the machine:
 
-vagrant ssh
+Vagrant SSH
 To get to the "working directory":
 
 cd /vagrant/tournament
@@ -44,7 +44,7 @@ You can see the solution of the original "challenge" (without extra credit funct
 git checkout solution_without_extras
 Whenever you do a checkout, please remember to recreate the database with the psql command mentioned above. Failing to do that will probably result in erros, as required table and columns might not exist.
 
-Dependencies
+Dependencies:
 
 Postgresql
 python-psycopg2 (version >= 2.5)
