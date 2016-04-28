@@ -1,168 +1,212 @@
-import psycopg2
+import psycopg2, re
 
-def connect(database_name="tournament"):
+
+def connect():
+    """Connect to the PostgreSQL database.  Returns a database connection."""
     try:
-        db = psycopg2.connect("dbname={}".format(database_name))
-        cursor = db.cursor()
-        return db, cursor
-    except:
-        print("<error message>")
+        conn = psycopg2.connect("dbname=tournament")
+        print "Connected!"
+        return conn
+    except psycopg2.Error as e:
+        print e
 
-def registerPlayer(name):
-    db, cursor = connect()
-
-    query = "INSERT INTO players (name) VALUES (%s);"
-    parameter = (name,)
-    cursor.execute(query, parameter)
-
-    db.commit()
-    db.close()
+def deleteWins():
+    DB = connect()
+    c = DB.cursor()
+    c.execute("DELETE FROM wins;")
+    DB.commit()
+    c.close()
+    DB.close()
+    print "Task Done!"
 
 def deleteMatches():
-    """Remove all the match records from the database."""
-    try:
-        db = connect()
-        cursor = db.cursor()
-        cursor.execute('DELETE FROM match;')
-        db.commit()
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
+    DB = connect()
+    c = DB.cursor()
+    c.execute("DELETE FROM matches;")
+    DB.commit()
+    c.close()
+    DB.close()
+    print "Task Done!"
 
 def deletePlayers():
-    """Remove all the player records from the database."""
-    try:
-        db = connect()
-        cursor = db.cursor()
-        cursor.execute('DELETE FROM player;')
-        db.commit()
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
+    DB = connect()
+    c = DB.cursor()
+    c.execute("DELETE FROM players;")
+    DB.commit()
+    c.close()
+    DB.close()
+
+
+def countWins():
+    DB = connect()
+    c = DB.cursor()
+    c.execute("SELECT COUNT(*) FROM wins;")
+    result = int(c.fetchone()[0])
+    c.close()
+    DB.close()
+    return result
 
 
 def countPlayers():
-    """Returns the number of players currently registered."""
-    count = None
-    try:
-        db = connect()
-        cursor = db.cursor()
-        cursor.execute('SELECT count(*) FROM player;')
-        count = cursor.fetchone()[0]
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
-
-    return count
-
-
-def registerPlayer(name):
-    """Adds a player to the tournament database.
-  
-    The database assigns a unique serial id number for the player.  (This
-    should be handled by your SQL database schema, not in your Python code.)
-  
-    Args:
-      name: the player's full name (need not be unique).
-    """
-    try:
-        db = connect()
-        cursor = db.cursor()
-        command = "INSERT INTO player (name) VALUES (%(name)s)"
-        variables = {'name': name}
-        cursor.execute(command, variables)
-        db.commit()
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
-
-def playerStandings():
-    """Returns a list of the players and their win records, sorted by wins.
-    The first entry in the list should be the player in first place, or a player
-    tied for first place if there is currently a tie.
-    Returns:
-      A list of tuples, each of which contains (id, name, wins, matches):
-        id: the player's unique id (assigned by the database)
-        name: the player's full name (as registered)
-        wins: the number of matches the player has won
-        matches: the number of matches the player has played
-    """
     DB = connect()
     c = DB.cursor()
-    c.execute("SELECT * FROM standing")
-    results = c.fetchall()
+    c.execute("SELECT COUNT(*) FROM players;")
+    result = int(c.fetchone()[0])
+    c.close()
     DB.close()
-    return results
+    return result
 
 
-def reportMatch(winner, loser):
-    """Records the outcome of a single match between two players.
-    Args:
-      winner:  the id number of the player who won
-      loser:  the id number of the player who lost
-    """
+#In the next two functions I try to escape ' by adding two of them, noticed the name O'Neil needed it.
+#I am aware psycopg offers a way to do it with this code : c.execute("INSERT INTO players (name) VALUES(%s) RETURNING id;", (name,))
+#I just wanted to do it with regexp which were taught to us in this course
+def registerPlayer(name):
+    DB = connect()
+    c = DB.cursor()
+    chars_to_remove = ["'"]
+    rx = '[' + re.escape(''.join(chars_to_remove))+']'
+    name = re.sub(rx, '"', name)
+    c.execute("INSERT INTO players (name) VALUES ('%s') RETURNING id;" % ( name,))
+    DB.commit()
+    returnable = int(c.fetchone()[0])
+    c.close()
+    DB.close()
+    return returnable
 
-    try:
-        db = connect()
-        cursor = db.cursor()
+#creates a new tournament for the players to have fun in
+def createTournament(name):
+    DB = connect()
+    c = DB.cursor()
+    chars_to_remove = ["'"]
+    rx = '[' + re.escape(''.join(chars_to_remove))+']'
+    name = re.sub(rx, "''", name)
+    c.execute("INSERT INTO tournaments (name) VALUES ('%s') RETURNING id;" % (name,))
+    DB.commit()
+    returnable = int(c.fetchone()[0])
+    c.close()
+    DB.close()
+    return returnable
 
-        cursor.execute("SELECT round from match ORDER BY round DESC;")
-        result = cursor.fetchone()
-        next_round = None
-        #import pdb; pdb.set_trace()
-        if result:
-            latest_round = result[0]
-            next_round = latest_round + 1
-        else:
-            next_round = 1
+def deleteTournaments():
+    DB = connect()
+    c = DB.cursor()
+    c.execute("DELETE FROM tournaments;")
+    DB.commit()
+    c.close()
+    DB.close()
 
+def countTournaments():
+    DB = connect()
+    c = DB.cursor()
+    c.execute("SELECT COUNT(*) FROM tournaments;")
+    c.close()
+    DB.close()
+    result = int(c.fetchone()[0])
+    return result
 
-        command = """INSERT INTO match (round, winner, loser) VALUES 
-                    (%(next_round)s, %(winner)s, %(loser)s)"""
-        variables = {'next_round': next_round,'winner': winner, 'loser': loser}
-        cursor.execute(command, variables)
+# registers a participant to a tournament from the already existing tournaments and players.
+def registerParticipant(t_id, p_id):
+    DB = connect()
+    c = DB.cursor()
+    c.execute("INSERT INTO participates (t_id, p_id) VALUES (%s, %i);" % (t_id, p_id,))
+    DB.commit()
+    c.close()
+    DB.close()
 
-        db.commit()
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
- 
- 
+def deleteParticipates():
+    DB = connect()
+    c = DB.cursor()
+    c.execute("DELETE FROM participates")
+    DB.commit()
+    c.close()
+    DB.close()
+
+def countParticipates():
+    DB = connect()
+    c = DB.cursor()
+    c.execute("SELECT COUNT(*) FROM participates;")
+    result = int(c.fetchone()[0])
+    c.close()
+    DB.close()
+    return result
+
+# has a tournament id to take players standings from a certain tournament
+def playerStandings(t_id):
+    DB = connect()
+    c = DB.cursor()
+    c.execute("SELECT * FROM player_info where tournaments = %s;" % (t_id,))
+    result = c.fetchall()
+    c.close()
+    DB.close()
+    return result
+
+# added the boolean for tie, which if true, adds a win for the other player as well.
+# first argumment, if the game is not a tie, should be considered as the winner
+# used
+def reportMatch(first, second, tie,t_id):
+    DB = connect()
+    c = DB.cursor()
+    c.execute("INSERT INTO matches (round, p_one_id, p_two_id, t_id) VALUES( %s, %i, %d, %f) RETURNING id;" % (0,first, second, t_id ))
+    match_id = int(c.fetchone()[0])
+    c.execute("INSERT INTO wins (m_id, p_id) VALUES(%s, %i);" % (match_id, first,))
+    if tie:
+        c.execute("INSERT INTO wins (m_id, p_id) VALUES (%s, %i);" % (match_id, second,))
+    DB.commit()
+    c.close()
+    DB.close()
+
+#used to setup preliminary matches
+def setupMatch(first, second, t_id):
+    DB = connect()
+    c = DB.cursor()
+    c.execute("INSERT INTO matches (round, p_one_id, p_two_id t_id) VALUES( %s, %i, %d, %f) RETURNING id;" % (0,first, second, t_id ))
+    DB.commit()
+    c.close()
+    DB.close()
+
+#used to report wins separately from creating matches
+def reportWin(player_id, match_id):
+    DB = connect()
+    c = DB.cursor()
+    c.execute("INSERT INTO wins (m_id, p_id) VALUES(%s, %i);" % (match_id, player_id,))
+    c.close()
+    DB.close()
+
+# added the boolean for tie, which if true, adds a win for the other player as well.
+# first argumment, if the game is not a tie, should be considered as the winner
+# the round argumment is to keep track when the match happen.
+def reportMatchWithRound(round, first, second, tie,t_id):
+    DB = connect()
+    c = DB.cursor()
+    c.execute("INSERT INTO matches (round, p_one_id, p_two_id, t_id) VALUES( %s, %i, %d, %f) RETURNING id;" % (round,first, second, t_id ))
+    match_id = int(c.fetchone()[0])
+    c.execute("INSERT INTO wins (m_id, p_id) VALUES(%s, %i);" % (match_id, first,))
+    if tie:
+        c.execute("INSERT INTO wins (m_id, p_id) VALUES (%s, %i);" % (match_id, second,))
+    DB.commit()
+    c.close()
+    DB.close()
+
+#put docstring inside because that's how python says we should
 def swissPairings():
     """Returns a list of pairs of players for the next round of a match.
-  
     Assuming that there are an even number of players registered, each player
     appears exactly once in the pairings.  Each player is paired with another
     player with an equal or nearly-equal win record, that is, a player adjacent
     to him or her in the standings.
-  
     Returns:
       A list of tuples, each of which contains (id1, name1, id2, name2)
         id1: the first player's unique id
         name1: the first player's name
+        wins1: the amount of wins the first player has
         id2: the second player's unique id
         name2: the second player's name
+        wins2: the amount of wins the second player has
     """
-
-    players = []
-
-    try:
-        db = connect()
-        cursor = db.cursor()
-        #cursor.execute('SELECT id, name FROM player order by(matches);')
-        cursor.execute('SELECT id, name FROM player order by(wins);')
-        results = cursor.fetchall()
-        db.close()
-    except psycopg2.Error as e:
-        print(e)
-
-
-    while results:
-        player2 = results.pop()
-        player1 = results.pop()
-        player_tuple = (player1[0], player1[1], player2[0], player2[1])
-        players.append(player_tuple)
-    #import pdb; pdb.set_trace()
-
-    players.reverse()
-    return players
+    DB = connect()
+    c = DB.cursor()
+    c.execute("SELECT * FROM player_pairs;")
+    result = c.fetchall()
+    c.close()
+    DB.close()
+    return result
