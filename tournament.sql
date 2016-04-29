@@ -1,80 +1,104 @@
--- Table definitions for the tournament project.
---
--- Put your SQL 'create table' statements in this file; also 'create view'
--- statements if you choose to use it.
---
--- You can write comments in this file by starting them with two dashes, like
--- these lines here.
-
-
 DROP DATABASE IF EXISTS tournament;
 CREATE DATABASE tournament;
-
 \c tournament
 
-DROP TABLE IF EXISTS players CASCADE;
-DROP TABLE IF EXISTS tournaments CASCADE;
-DROP TABLE IF EXISTS tournament_games CASCADE;
---DROP VIEW IF EXISTS matches CASCADE;
---DROP VIEW IF EXISTS wins CASCADE;
-DROP VIEW IF EXISTS standings CASCADE;
+DROP TABLE IF EXISTS tournaments;
+DROP TABLE IF EXISTS players;
+DROP TABLE IF EXISTS participates;
+DROP TABLE IF EXISTS matches;
+DROP TABLE IF EXISTS wins;
+DROP VIEW IF EXISTS player_pairs;
+DROP VIEW IF EXISTS player_info;
 
 
--- Stores player names with their ids. Names not unique
-CREATE TABLE players (
-						player_id serial primary key,
-						name varchar not null
-					);
-
-
--- Lists players for each tournament.The player has a bye win or not.
 CREATE TABLE tournaments (
-  							tournament_name text,
-  							player_id integer references players,
-  							bye_win BOOLEAN DEFAULT false,
-  							PRIMARY KEY (tournament_name, player_id) 
-						);
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(250)
+                         );
+CREATE TABLE players (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(250)
+                     );
 
+CREATE TABLE participates (
+                            id SERIAL PRIMARY KEY,
+                            t_id INT NOT NULL,
+                            p_id INT NOT NULL,
 
---Results of all matches for all tournament_games. Draw is supported.
+                            CONSTRAINT fk_tournament
+                            FOREIGN KEY (t_id)
+                            REFERENCES tournaments (id),
 
-CREATE TABLE tournament_games (
-						tournament_name varchar,
-						game_id serial,
-						player1_id integer,
-						player2_id integer,
-						winner_id integer default null,
-						draw BOOLEAN default false,
-						CONSTRAINT winner CHECK((draw AND winner_id IS NULL) OR (NOT draw AND winner_id IS NOT NULL)),
-						PRIMARY KEY (tournament_name, game_id),
-						FOREIGN KEY (tournament_name, player1_id) references tournaments,
-						FOREIGN KEY (tournament_name, player2_id) references tournaments
-					);
+                            CONSTRAINT fk_player
+                            FOREIGN KEY (p_id)
+                            REFERENCES players (id)
+                          );
 
---CREATE TABLE tournament_records (
+--second player id is not forcing to have a value so that we can do the swiss pairing of odd number of players, where a player can win against no one, and this way we'd keep track so that this happens only once, simply seeing if they have any matches against no one.
+CREATE TABLE matches (
+                            id SERIAL PRIMARY KEY,
+                            round INT NOT NULL,
+                            p_one_id INT NOT NULL,
+                            p_two_id INT,
+                            t_id INT NOT NUll,
 
---						tournament varchar references tournaments (name),
---						players_id varchar references players (id),
---					);
---
+                            CONSTRAINT fk_p_one_id
+                            FOREIGN KEY (p_one_id)
+                            REFERENCES players (id),
 
+                            CONSTRAINT fk_t_id
+                            FOREIGN KEY(t_id)
+                            REFERENCES tournaments (id),
 
--- Aggregates data for each player in each tournament. Wins are calculated as 2 points per win, 1 per draw.
-CREATE VIEW standings AS 
-		SELECT tournaments.tournament_name, tournaments.player_id,
-		count(CASE WHEN (tournaments.player_id = tournament_games.player1_id OR tournaments.player_id = tournament_games.player2_id) THEN 1 END) AS matches,
-		count(CASE WHEN tournament_games.winner_id = tournaments.player_id THEN 1 END) AS wins,
-		count(CASE WHEN tournament_games.winner_id = tournaments.player_id THEN 1 END) AS draws,
-		count(CASE WHEN tournament_games.winner_id = tournaments.player_id THEN 2 WHEN tournament_games.draw = true THEN 1 END) AS points
-		FROM tournaments left join tournament_games
-		ON tournament_games.tournament_name = tournaments.tournament_name 
-		AND (tournaments.player_id = tournament_games.player1_id OR tournaments.player_id = tournament_games.player2_id)
-		GROUP BY tournaments.tournament_name, tournaments.player_id
-		ORDER BY tournament_name ASC, points DESC;
+                            CONSTRAINT fk_p_two_id
+                            FOREIGN KEY (p_two_id)
+                            REFERENCES players (id)
+                     );
 
+CREATE TABLE wins (
+                            id SERIAL PRIMARY KEY,
+                            m_id INT NOT NULL,
+                            p_id INT NOT NULL,
 
+                            CONSTRAINT fk_m_id
+                            FOREIGN KEY (m_id)
+                            REFERENCES matches (id),
 
---LEFT JOIN tournament_games 
---ON tournaments.tournament_name = tournament_games.tournament_name 
---AND (tournaments.player_id = tournament_games.player1_id OR tournaments.player_id = tournaments_games.player2_id)
+                            CONSTRAINT fk_p_id
+                            FOREIGN KEY (p_id)
+                            REFERENCES players(id)
+                  );
 
+CREATE VIEW player_info AS SELECT
+                            p.id,
+                            par.t_id AS tournaments,
+                            p.name,
+                                (SELECT COUNT(m.*) AS matches
+                                FROM matches m
+                                WHERE m.p_one_id = p.id OR m.p_two_id = p.id),
+                            COUNT(wins.*) AS wins
+                            FROM players p
+                            LEFT JOIN participates par ON par.p_id = p.id
+                            LEFT JOIN wins ON wins.p_id = p.id
+                            GROUP BY p.id, par.t_id
+                            ORDER BY wins;
+
+CREATE VIEW player_pairs AS WITH seq AS
+                            (SELECT
+                                    p.id,
+                                    p.name,
+                                    p.wins,
+                                    row_number() OVER (ORDER BY p.wins) AS seq
+                                    FROM player_info p
+                            )
+			                SELECT
+			                        p1.id AS id1,
+			                        p1.name AS name1,
+			                        p1.wins AS wins1,
+			                        p2.id AS id2,
+			                        p2.name AS name2,
+			                        p2.wins AS wins2
+		                            FROM seq p1
+		                            JOIN seq p2
+		                            ON p1.seq % 2 = 1
+		                            AND p2.seq = p1.seq+1;
