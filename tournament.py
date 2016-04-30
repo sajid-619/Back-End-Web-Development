@@ -96,13 +96,14 @@ def deleteTournaments():
     DB.close()
 
 def countTournaments():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("SELECT COUNT(*) FROM tournaments;")
+    
+    DB, c = get_cursor()
+    c.execute ("SELECT count(player_id) FROM tournaments;")
+    result = c.fetchall()[0][0]
+
     c.close()
     DB.close()
-    result = int(c.fetchone()[0])
-    return result
+    return int(result)
 
 # registers a participant to a tournament from the already existing tournaments and players.
 def registerParticipant(t_id, p_id):
