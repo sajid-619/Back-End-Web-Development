@@ -1,213 +1,127 @@
-import psycopg2, re
+#!/usr/bin/env python
+# 
+# tournament.py -- implementation of a Swiss-system tournament
+#
 
+import psycopg2
+import TournamentDBconnect
+
+DB = TournamentDBconnect.TournamentDB('tournament')
 
 def connect():
     """Connect to the PostgreSQL database.  Returns a database connection."""
-    try:
-        conn = psycopg2.connect("dbname=tournament")
-        print "Connected!"
-        return conn
-    except psycopg2.Error as e:
-        print e
-
-def deleteWins():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("DELETE FROM wins;")
-    DB.commit()
-    c.close()
-    DB.close()
-    print "Task Done!"
-
+    
+    
 def deleteMatches():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("DELETE FROM matches;")
-    DB.commit()
-    c.close()
-    DB.close()
-    print "Task Done!"
+    """Remove all the match records from the database."""
+    # Delete match table and matchresult table
+    deletesql = "DELETE FROM match;DELETE FROM matchresult;"
+    parameter =""
+    sqlexecute = DB.query(deletesql, parameter);
+    
 
 def deletePlayers():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("DELETE FROM players;")
-    DB.commit()
-    c.close()
-    DB.close()
-
-
-def countWins():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("SELECT COUNT(*) FROM wins;")
-    result = int(c.fetchone()[0])
-    c.close()
-    DB.close()
-    return result
-
+    """Remove all the player records from the database."""
+    # Delete player table
+    sql = "DELETE FROM player"
+    data = ""
+    sqlexecute = DB.query(sql, data);
+        
 
 def countPlayers():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("SELECT COUNT(*) FROM players;")
-    result = int(c.fetchone()[0])
-    c.close()
-    DB.close()
-    return result
+    """Returns the number of players currently registered."""
+    # Get count of player
+    sqlexecute = DB.fetchonequery("SELECT count(player_id) FROM player")
+    return sqlexecute[0];
 
-
-#In the next two functions I try to escape ' by adding two of them, noticed the name O'Neil needed it.
-#I am aware psycopg offers a way to do it with this code : c.execute("INSERT INTO players (name) VALUES(%s) RETURNING id;", (name,))
-#I just wanted to do it with regexp which were taught to us in this course
 def registerPlayer(name):
-    DB = connect()
-    c = DB.cursor()
-    chars_to_remove = ["'"]
-    rx = '[' + re.escape(''.join(chars_to_remove))+']'
-    name = re.sub(rx, '"', name)
-    c.execute("INSERT INTO players (name) VALUES ('%s') RETURNING id;" % ( name,))
-    DB.commit()
-    returnable = int(c.fetchone()[0])
-    c.close()
-    DB.close()
-    return returnable
+    """Adds a player to the tournament database.
+    The database assigns a unique serial id number for the player.  (This
+    should be handled by your SQL database schema, not in your Python code.)
+    Args:
+      name: the player's full name (need not be unique).
+    """
+    # Add player to player table
+    sql = "INSERT INTO player(player_name) VALUES(%s);"
+    data = (name,)
+    sqlexecute = DB.query(sql, data);
 
-#creates a new tournament for the players to have fun in
-def createTournament(name):
-    DB = connect()
-    c = DB.cursor()
-    chars_to_remove = ["'"]
-    rx = '[' + re.escape(''.join(chars_to_remove))+']'
-    name = re.sub(rx, "''", name)
-    c.execute("INSERT INTO tournaments (name) VALUES ('%s') RETURNING id;" % (name,))
-    DB.commit()
-    returnable = int(c.fetchone()[0])
-    c.close()
-    DB.close()
-    return returnable
+def playerStandings():
+    """Returns a list of the players and their win records, sorted by wins.
+    The first entry in the list should be the player in first place, or a player
+    tied for first place if there is currently a tie.
+    Returns:
+      A list of tuples, each of which contains (id, name, wins, matches):
+        id: the player's unique id (assigned by the database)
+        name: the player's full name (as registered)
+        wins: the number of matches the player has won
+        matches: the number of matches the player has played
+    """
+    # Get playerStandings(playerid, name, #ofwin, #ofmatch) view table
+    sqlexecute = DB.selectquery("SELECT * FROM playerstandings")
+    return sqlexecute
 
-def deleteTournaments():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("DELETE FROM tournaments;")
-    DB.commit()
-    c.close()
-    DB.close()
 
-def countTournaments():
+def reportMatch(winner, loser, istie):
+    """Records the outcome of a single match between two players.
+    Args:
+      winner:  the id number of the player who won
+      loser:  the id number of the player who lost
+    """
+    # Add to Match Table
+    matchsql = "INSERT INTO match(a_player_id, b_player_id) VALUES(%s, %s);"
+    marchparameter = (winner, loser)
+    matchsqlexeute = DB.query(matchsql, marchparameter)
     
-    DB, c = get_cursor()
-    c.execute ("SELECT count(player_id) FROM tournaments;")
-    result = c.fetchall()[0][0]
-
-    c.close()
-    DB.close()
-    return int(result)
-
-# registers a participant to a tournament from the already existing tournaments and players.
-def registerParticipant(t_id, p_id):
-    DB = connect()
-    c = DB.cursor()
-    c.execute("INSERT INTO participates (t_id, p_id) VALUES (%s, %i);" % (t_id, p_id,))
-    DB.commit()
-    c.close()
-    DB.close()
-
-def deleteParticipates():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("DELETE FROM participates")
-    DB.commit()
-    c.close()
-    DB.close()
-
-def countParticipates():
-    DB = connect()
-    c = DB.cursor()
-    c.execute("SELECT COUNT(*) FROM participates;")
-    result = int(c.fetchone()[0])
-    c.close()
-    DB.close()
-    return result
-
-# has a tournament id to take players standings from a certain tournament
-def playerStandings(t_id):
-    DB = connect()
-    c = DB.cursor()
-    c.execute("SELECT * FROM player_info where tournaments = %s;" % (t_id,))
-    result = c.fetchall()
-    c.close()
-    DB.close()
-    return result
-
-# added the boolean for tie, which if true, adds a win for the other player as well.
-# first argumment, if the game is not a tie, should be considered as the winner
-# used
-def reportMatch(first, second, tie,t_id):
-    DB = connect()
-    c = DB.cursor()
-    c.execute("INSERT INTO matches (round, p_one_id, p_two_id, t_id) VALUES( %s, %i, %d, %f) RETURNING id;" % (0,first, second, t_id ))
-    match_id = int(c.fetchone()[0])
-    c.execute("INSERT INTO wins (m_id, p_id) VALUES(%s, %i);" % (match_id, first,))
-    if tie:
-        c.execute("INSERT INTO wins (m_id, p_id) VALUES (%s, %i);" % (match_id, second,))
-    DB.commit()
-    c.close()
-    DB.close()
-
-#used to setup preliminary matches
-def setupMatch(first, second, t_id):
-    DB = connect()
-    c = DB.cursor()
-    c.execute("INSERT INTO matches (round, p_one_id, p_two_id t_id) VALUES( %s, %i, %d, %f) RETURNING id;" % (0,first, second, t_id ))
-    DB.commit()
-    c.close()
-    DB.close()
-
-#used to report wins separately from creating matches
-def reportWin(player_id, match_id):
-    DB = connect()
-    c = DB.cursor()
-    c.execute("INSERT INTO wins (m_id, p_id) VALUES(%s, %i);" % (match_id, player_id,))
-    c.close()
-    DB.close()
-
-# added the boolean for tie, which if true, adds a win for the other player as well.
-# first argumment, if the game is not a tie, should be considered as the winner
-# the round argumment is to keep track when the match happen.
-def reportMatchWithRound(round, first, second, tie,t_id):
-    DB = connect()
-    c = DB.cursor()
-    c.execute("INSERT INTO matches (round, p_one_id, p_two_id, t_id) VALUES( %s, %i, %d, %f) RETURNING id;" % (round,first, second, t_id ))
-    match_id = int(c.fetchone()[0])
-    c.execute("INSERT INTO wins (m_id, p_id) VALUES(%s, %i);" % (match_id, first,))
-    if tie:
-        c.execute("INSERT INTO wins (m_id, p_id) VALUES (%s, %i);" % (match_id, second,))
-    DB.commit()
-    c.close()
-    DB.close()
-
-#put docstring inside because that's how python says we should
+    # Get Match ID
+    matchid = DB.fetchonequery("SELECT LASTVAL()")
+    
+    # Check Match result is tie or not
+    # istie=0, there are win and lose/ istie=1 no winner
+    if istie == 0:
+        sql = "INSERT INTO matchresult(match_id, player_id, win) values(%s, %s, %s);INSERT INTO matchresult(match_id, player_id, lose) values(%s, %s, %s)"
+        parameter = (matchid[0], winner, 1, matchid[0], loser, 1)
+        sqlexecute = DB.query(sql, parameter);
+    else:
+        sql = "INSERT INTO matchresult(match_id, player_id, tie) values(%s, %s, %s);INSERT INTO matchresult(match_id, player_id, tie) values(%s, %s, %s)"
+        parameter = (matchid[0], winner, 1, matchid[0], loser, 1)
+        sqlexecute = DB.query(sql, parameter);
+     
+ 
 def swissPairings():
     """Returns a list of pairs of players for the next round of a match.
+  
     Assuming that there are an even number of players registered, each player
     appears exactly once in the pairings.  Each player is paired with another
     player with an equal or nearly-equal win record, that is, a player adjacent
     to him or her in the standings.
+  
     Returns:
       A list of tuples, each of which contains (id1, name1, id2, name2)
         id1: the first player's unique id
         name1: the first player's name
-        wins1: the amount of wins the first player has
         id2: the second player's unique id
         name2: the second player's name
-        wins2: the amount of wins the second player has
     """
-    DB = connect()
-    c = DB.cursor()
-    c.execute("SELECT * FROM player_pairs;")
-    result = c.fetchall()
-    c.close()
-    DB.close()
-    return result
+    # Display Play list (Player ID, Player Name)
+    sqlexecute = DB.selectquery("SELECT player_id, player_name FROM player")
+    if (len(sqlexecute) > 0):
+        playerlist = {}
+        playeridonly = []
+        pairinglist = []
+        for row in sqlexecute:
+            playerlist.update({str(row[0]):str(row[1])})
+            playeridonly.append(str(row[0]))
+        
+        #print(playerlist);
+        #print(playeridonly);
+        playercount = len(playeridonly)
+       
+        # Match Way: Forward player and Backward player in the list 
+        # ex) playerlist = [11,12,13,14,15,16]    Match:[11,16], [12,15], [13,14] 
+        for index in xrange(0, (playercount/2), 1):
+            opindex = playercount-index-1
+            pairinglist.append([playeridonly[index], playerlist[playeridonly[index]], playeridonly[opindex], playerlist[playeridonly[opindex]]])
+
+        #print(pairinglist)
+        return pairinglist
