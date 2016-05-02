@@ -1,46 +1,51 @@
 -- Table definitions for the tournament project.
---
--- Put your SQL 'create table' statements in this file; also 'create view'
--- statements if you choose to use it.
---
--- You can write comments in this file by starting them with two dashes, like
--- these lines here.
 
-DROP TABLE IF EXISTS player CASCADE;
-create table player (
-	player_id bigserial  NOT NULL,
-	player_name varchar(100) NOT NULL,
+-- Delet any existing DB with name 'tournament' and create new one.
+DROP DATABASE IF EXISTS tournament;
+CREATE DATABASE tournament;
 
-	CONSTRAINT player_pk PRIMARY KEY(player_id)
-);
+-- connect to database
+\c tournament;
 
-DROP TABLE IF EXISTS match CASCADE;
-create table match (
-	match_id bigserial  NOT NULL,
-	a_player_id integer NOT NULL,
-	b_player_id integer NOT NULL,
-	match_datetime timestamp with time zone NULL DEFAULT now(),
-	CONSTRAINT match_pk PRIMARY KEY(match_id)
-);
+-- create players and matches table
+CREATE TABLE players (id serial PRIMARY KEY,
+                      name text);
 
-DROP TABLE IF EXISTS matchresult CASCADE;
-create table matchresult (
-	matchresult_id bigserial  NOT NULL,
-	match_id integer NOT NULL,
-	player_id integer NOT NULL,
-	win integer NOT NULL default 0,
-	lose integer NOT NULL default 0,
-	tie integer NOT NULL default 0,
-	CONSTRAINT matchresult_pk PRIMARY KEY(matchresult_id)
-);
+CREATE TABLE matches (winner integer REFERENCES players(id),
+                      loser integer REFERENCES players(id),
+                      PRIMARY KEY (winner, loser));
 
-DROP TABLE IF EXISTS playerstandings CASCADE;
-CREATE VIEW playerstandings as
-(
-	SELECT player.player_id, player.player_name, coalesce(playersummary.winno,0) as wins, coalesce(playersummary.matchno,0) as matches  
-	FROM player LEFT JOIN
-	(SELECT player_id, sum(win) as winno, count(player_id) as matchno 
-	FROM matchresult GROUP BY player_id) playersummary 
-	ON player.player_id = playersummary.player_id
-	ORDER BY playersummary.winno DESC
-);
+-- create views to determine wins, total matches, and a combined standings
+CREATE VIEW wins AS SELECT id, count(winner) AS wins FROM players
+    LEFT JOIN matches ON id = winner GROUP BY id;
+
+CREATE VIEW totalMatches AS SELECT id, count (matches) AS matches FROM players
+    LEFT JOIN matches ON id = winner or id = loser GROUP BY id;
+
+CREATE VIEW standings AS SELECT players.id, name, wins, matches,
+    row_number() OVER(ORDER BY wins DESC, name) AS row
+    FROM players
+        LEFT JOIN wins ON players.id = wins.id
+        LEFT JOIN totalMatches ON players.id = totalMatches.id
+    ORDER BY wins DESC, name;
+
+CREATE VIEW player1 AS SELECT id AS id1, name AS name1, row FROM standings
+    WHERE row % 2 = 1;
+
+CREATE VIEW player2 AS SELECT id AS id2, name AS name2, row FROM standings
+    EXCEPT SELECT * FROM player1;
+
+CREATE VIEW pairings AS SELECT DISTINCT ON (player1.row) id1, name1, id2, name2
+    FROM player1, player2
+    WHERE player1.row = (player2.row - 1) ORDER BY player1.row;
+
+insert into players values (default, 'Stephan Koenig');
+insert into players values (default, 'Bridgette Clarkston');
+insert into players values (default, 'Brodie Lodmell');
+insert into players values (default, 'Chris Stark');
+insert into players values (default, 'Sebastian Gornik');
+insert into players values (default, 'Stella Koenig');
+insert into matches values (1, 2);
+insert into matches values (3, 4);
+insert into matches values (5, 6);
+insert into matches values (6, 1);
